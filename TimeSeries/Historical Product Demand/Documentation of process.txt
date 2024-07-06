@@ -1,0 +1,62 @@
+1. Upon loading the dataframe we found 14000+ rows that did not have a date. We decided to drop those rows for the following reasons : 
+   - Most of the missing data was is large chunks of 2000~4000 rows. There is no reasonable way to determine approximate values of Product_code, Warehouse, Category and Order_Demand for such chunks. 
+   - Even attempting to impute values in such huge chunks either by single or multiple imputation would surely result in corrupted data. 
+   - 14,000 rows out of 1,048,000+ total rows is about 1.5% which should not make a big difference to the total.
+
+2. Dates were not sorted. The dates were also not in the datetime format. Finally, the data is in daily entries with many entries missing between dates. Logically, not every warehouse would be ordering every product every day and this is expected. Following steps were taken : 
+    - Since we are aware that the client takes one month to ship to his warehouse locations - it is practical to assume that we could aggregate the data by month, product and warehouse and set the date to the beginning of the month. Thereby, making it a monthly data time series. 
+    - Then we expanded each break up of product_code by warehouse into a min to max dataframe by date and filled the Order_Demand values with 0 ensuring no skipping of dates in the dataframe(s). 
+    - Finally converted the datetime unit to MS. 
+
+3. The Order_Demand values were in string format. Some of the Order_Demand values were in the format (value) e.g (100). 
+    - Strip the () from both sides of the values
+    - Converted the values to integer data type. 
+
+4. Then we modularised code to groupby product_code and then warehouse. Performed the following operations on each via loops: 
+   - Plot the Order_Demand column to view the original trend lines if any. 
+   - Performed seasonal decomposition on such a dataframe. 
+     (Note : At this point it became clear that none of the split dataframes had general trends but all did exhibit clear seasonal trends)
+   - Performed a train/test split with test_size of 20% of the dataframe length. 
+   - Ran grid search for the optimal parameters through pmdarima library. 
+   - Fit the model to x_train
+   - Obtained predictions on test set. 
+   - Obtained forecasts for 12 months. 
+   - Plot Train + Test true values versus Predicted Test values. 
+   - Plot Test True Values, Simple Moving Average and Exponential Weighted Moving Average vs Model Predictions. 
+   - Plot forecast. 
+
+5. On beginning this process, we identified issues in our process and rectified them :
+    - The gridsearch through pmdarima for a SARIMA model repeatedly output the parameters (0,0,0),(0,0,0)[12] when we are actually aware that the data has a strong and clear seasonality trend. Manually attempted to set parameters for a few datasets and settled on (0,0,1)(0,1,2)[12] for the time being. This resulted in some predictability value and as evidenced by metrics which were calculated after and some graphs plotted, we were getting closer to the goal of being able to predict future demand. 
+    - Included an Augmented Dickey Fuller test Report for stationarity.
+      (Note - Even though all the distributions showed that they were stationary, it was clear that there was a seasonal trend and ADF is susceptible to giving erroneous reports if the seasonal trend is strong). 
+    - Included ACF and PACF plots
+    - Included Kolmogorov-Smirnov test to check whether distribution of our predictions were the same as distributions for our test values. 
+    - Calculated and saved metrics for each product and warehouse combination to a dataframe for extraction later : MAE, MSE, RMSE, MEAN, STD, MSE/MEAN and RMSE / STD, KS Test Value, KS p-value, Saved a comment which is 'Deploy' if KS p-value equal to or greater than 0.7. 'Deploy but monitor' if KS p-value less than .70 but greater than or equal to 0.30.'Retrain' if KS p-value less than 0.3.
+    - Saved forecast for 1 month for each product and warehouse combination to a dataframe to be extracted later as a report. 
+    - We were facing some errors due to dynamic size of dataframes. Ensured length of values and shape of arrays present in a particular dataframe were compatible with our models and/or graphs (nlags for ACF and PACF, length of arrays for model fit and predictions, shape of arrays being input to the models. Incorporated debugging and error handling for such cases. 
+
+6. Since the results for most of the predictions were between average to bad - we decided to run the analysis on the main dataframe (before splitting by product_code and warehouse) to examine if by splitting were we losing any trends. However, on further consideration, realised that we have data aggregated by month for each product and warehouse. In order to perform any analysis on this data, we would first have to aggregate the data to by month ignoring the product_code. However, this doesnt make any sense. Different product_codes will have different consumption and re-order rates which will vastly vary. We wil definitely sell multiples of units of candy bars vs units of cars. In 2160 unique product codes - aggregating the order values does nothing. So, dropped this idea. 
+
+7. Included code to save the plots and reports (Metrics Report, 1 Month forecasts, Summary Statistics) as PDF files and also saved the workable models files. 
+
+8. Review, Notes and Observations: 
+- A one size fits all model is not workable for this dataset. 
+- We saw that about 20% of the models were workable and could be deployed. 22% of models could be deployed but monitored for efficiency and another 58% required complete retraining. 
+- Even non-performing models were easily outperforming SMA and EWMA predictions demonstrating that there is some explainability between our models predictions and true values which is being captured. The objective is to improve on this and minimise the errors between predictions and actuals by further fine-tuning. The KS test and  MAE, MSE, RMSE metrics were different for different models but were used to evaluate the models that could be considered successful.
+- However, we have enough workable models to roll out a test for the products and warehouse which have workable models and evaluate their performance over time which may give us feedback and further insights into optimizing our next roll-out of models. 
+- Next steps: 
+  - Work on fine-tuning for models which were not performing satisfactorily.
+  - Start with low hanging fruit - data that was stationary and should be able to be improved on by altering our ARIMA parameters.
+  - Then move on to trial and error for other models. 
+  - Work on modularising the code further and to build in pipelines and functionality so we could use the code in the futrue to : 
+    - retrain specific combinations of product and warehouse. Employ version control to save models thus retrained. Include parameters that allow flexibility such as only model training, only reporting, only model saving or any combination of the three. 
+    - Permit monthly forecast by product, warehouse or combination of both - either specific combinations or overall by making a function that takes optional parameters.
+    - Revisit analysing the original data by product_code only (aggregate warehouse data per product)to identify trends by product and to identify underperforming products.
+- Notes and observations : 
+  - All the dataframes exhibited strong seasonality but no clear trends. 
+  - Demand spikes while noticeable in seasonality were not easily recognisable in the raw data. 
+  - Further analysis would be required to analyse underperforming products while settling baseline for 'average performance'. 
+  - Note that at some later point in the business, depending on the success of this project, it may be a good idea to try VAR and VARMA models between different locations of warehouses. The assumption being that proximity between warehouses may affect each other. 
+  
+
+
